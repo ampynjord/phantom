@@ -12,7 +12,6 @@ DEFAULT_MODULES = [
     "headers_audit",
     "tls_check",
     "common_paths",
-    "os_audit",
     "attack_path_simulation",
 ]
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from phantom.config import PhantomConfig
-from phantom.engine.runner import PhantomRunner
+from phantom.engine import PhantomRunner
 from phantom.plugins import build_default_plugins
 
 

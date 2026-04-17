@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+from phantom.config import PhantomConfig
 
 
 def utc_now() -> str:
@@ -93,3 +98,46 @@ class ReportBundle:
     analyst_reports: list[dict[str, Any]]
     summary: dict[str, Any]
     files: dict[str, str]
+
+
+class AuditLogger:
+    def __init__(self, log_path: Path) -> None:
+        self.log_path = log_path
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.timeline: list[ActionRecord] = []
+
+    def log(self, module: str, action: str, target: str, status: str, details: dict | None = None) -> None:
+        record = ActionRecord(timestamp=utc_now(), module=module, action=action,
+                              target=target, status=status, details=details or {})
+        self.timeline.append(record)
+        with self.log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record.to_dict(), ensure_ascii=True) + "\n")
+
+
+def summarize_findings(findings: list[Finding]) -> dict:
+    severities = Counter(f.severity for f in findings)
+    highest = max((f.score for f in findings), default=0.0)
+    average = round(sum(f.score for f in findings) / len(findings), 2) if findings else 0.0
+    return {
+        "count": len(findings),
+        "highest_score": round(max(0.0, min(highest, 10.0)), 1),
+        "average_score": round(max(0.0, min(average, 10.0)), 1),
+        "severity_breakdown": dict(severities),
+    }
+
+
+@dataclass(slots=True)
+class PluginContext:
+    config: PhantomConfig
+    audit: Any
+    validator: Any
+    roe: Any
+
+
+class BasePlugin:
+    name = "base"
+    action_type = "analysis"
+
+    def execute(self, context: PluginContext, target: NormalizedTarget, observations: dict[str, Any]) -> ModuleResult:
+        raise NotImplementedError
+
