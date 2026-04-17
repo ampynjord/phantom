@@ -361,44 +361,20 @@ def _windows_audit(target_label: str, timeout: float) -> tuple[list[Finding], di
     findings: list[Finding] = []
     obs: dict[str, Any] = {"os_audit": {}}
 
-    # 1. Password policy (via secedit export — locale-agnostic)
-    min_len = _ps_int(
-        "(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters' "
-        "-Name MinimumPasswordLength -ErrorAction SilentlyContinue).MinimumPasswordLength"
-    )
-    # Fallback: local account policy via net accounts parsed with regex on numeric part
-    if min_len is None:
-        min_len = _ps_int(
-            "$p = (Get-LocalUser | Where-Object Enabled -eq $true | Measure-Object).Count; "
-            "try { $pol = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'); "
-            "$null } catch {}; "
-            "[System.Security.Principal.NTAccount]::new(''); $null"
-        )
-    # Use Get-ADDefaultDomainPasswordPolicy if domain, else registry
-    pw_max_age_days = _ps_int(
-        "$k='HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';"
-        "try{[int]((Get-ItemProperty $k -ErrorAction Stop).PasswordExpiryWarning)}catch{$null}"
-    )
-    # Simplest reliable approach for local policy:
-    min_pw_len = _ps_int(
-        "try { Add-Type -AssemblyName System.DirectoryServices.AccountManagement -ErrorAction Stop;"
-        "$ctx=[System.DirectoryServices.AccountManagement.PrincipalContext]::new("
-        "[System.DirectoryServices.AccountManagement.ContextType]::Machine);"
-        "$pol=[System.DirectoryServices.AccountManagement.UserPrincipal]::FindByIdentity($ctx,'Administrator');"
-        "$null } catch {$null}; $null"
-    )
-    # Best effort: read from secedit
+    # 1. Password policy — secedit requires admin, use net accounts as unicode fallback
     secedit_out = _ps(
         "$tmp=[System.IO.Path]::GetTempFileName();"
-        "secedit /export /cfg $tmp /quiet 2>$null;"
-        "if(Test-Path $tmp){ Get-Content $tmp; Remove-Item $tmp -Force }",
+        "try{ secedit /export /cfg $tmp /quiet 2>$null }catch{};"
+        "if(Test-Path $tmp){ Get-Content $tmp -Encoding Unicode; Remove-Item $tmp -Force }",
         timeout=15
     )
     obs["os_audit"]["secedit"] = secedit_out[:1000]
+    found_pw_policy = False
     if secedit_out:
         ml_match = re.search(r"MinimumPasswordLength\s*=\s*(\d+)", secedit_out)
         ma_match = re.search(r"MaximumPasswordAge\s*=\s*(-?\d+)", secedit_out)
         if ml_match:
+            found_pw_policy = True
             min_pw_len = int(ml_match.group(1))
             obs["os_audit"]["min_password_length"] = min_pw_len
             if min_pw_len < 12:
@@ -413,7 +389,7 @@ def _windows_audit(target_label: str, timeout: float) -> tuple[list[Finding], di
         if ma_match:
             max_age = int(ma_match.group(1))
             obs["os_audit"]["max_password_age_days"] = max_age
-            if max_age < 0 or max_age == 0:  # -1 or 0 = never expires
+            if max_age < 0 or max_age == 0:
                 findings.append(Finding(
                     title="Passwords never expire (local policy)",
                     description="Local security policy has no maximum password age.",
@@ -422,6 +398,8 @@ def _windows_audit(target_label: str, timeout: float) -> tuple[list[Finding], di
                     evidence={"max_password_age": "unlimited"},
                     recommendation="Set: net accounts /maxpwage:90",
                 ))
+    if not found_pw_policy:
+        obs["os_audit"]["secedit_note"] = "secedit requires admin rights; password policy audit skipped"
 
     # 2. Guest account (PowerShell locale-agnostic)
     guest_enabled = _ps_bool("(Get-LocalUser -Name 'Guest' -ErrorAction SilentlyContinue).Enabled")
@@ -511,9 +489,17 @@ def _windows_audit(target_label: str, timeout: float) -> tuple[list[Finding], di
             recommendation="Disable: Set-ItemProperty 'HKLM:\\...\\Winlogon' AutoAdminLogon 0",
         ))
 
-    # 8. PowerShell execution policy
-    ep = _ps("(Get-ExecutionPolicy -Scope LocalMachine) -as [string]")
-    obs["os_audit"]["ps_execution_policy"] = ep
+    # 8. PowerShell execution policy (from registry — bypasses subprocess policy restriction)
+    ep = _ps(
+        "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell'"
+        " -Name ExecutionPolicy -ErrorAction SilentlyContinue).ExecutionPolicy"
+    )
+    if not ep:
+        ep = _ps(
+            "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell'"
+            " -Name ExecutionPolicy -ErrorAction SilentlyContinue).ExecutionPolicy"
+        )
+    obs["os_audit"]["ps_execution_policy"] = ep or "not set (default Restricted)"
     if ep.lower() in {"unrestricted", "bypass"}:
         findings.append(Finding(
             title=f"PowerShell ExecutionPolicy is {ep} (LocalMachine)",
