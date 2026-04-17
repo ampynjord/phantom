@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phantom Report — {{ report.engagement_name }}</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #1c2128;
+      --border: #30363d; --ink: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --yellow: #d29922; --orange: #f0883e;
+      --red: #f85149; --purple: #bc8cff; --blue: #58a6ff;
+      --critical: #ff4d4f; --high: #f85149; --medium: #f0883e;
+      --low: #d29922; --info: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.6; }
+    a { color: var(--blue); }
+    main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    h1, h2, h3 { margin: 0 0 12px; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.2rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: .85rem; }
+    h3 { font-size: 1.1rem; }
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: start; }
+    .hero-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; }
+    .badge-critical { background: #3d0f0f; color: var(--critical); border: 1px solid var(--critical); }
+    .badge-high     { background: #3d1500; color: var(--high);     border: 1px solid var(--high); }
+    .badge-medium   { background: #3d2200; color: var(--medium);   border: 1px solid var(--medium); }
+    .badge-low      { background: #3d2e00; color: var(--low);      border: 1px solid var(--low); }
+    .badge-info     { background: #0d2040; color: var(--info);     border: 1px solid var(--info); }
+    .risk-box { text-align: center; padding: 20px 24px; border-radius: 12px; border: 2px solid; min-width: 120px; }
+    .risk-box.critical { border-color: var(--critical); background: #3d0f0f; color: var(--critical); }
+    .risk-box.high     { border-color: var(--high);     background: #3d1500; color: var(--high); }
+    .risk-box.medium   { border-color: var(--medium);   background: #3d2200; color: var(--medium); }
+    .risk-box.low      { border-color: var(--low);      background: #3d2e00; color: var(--low); }
+    .risk-box.info     { border-color: var(--info);     background: #0d2040; color: var(--info); }
+    .risk-box .level   { font-size: 1.6rem; font-weight: 700; }
+    .risk-box small    { color: var(--muted); display: block; font-size: .75rem; }
+    .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .metric { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .metric .val { font-size: 1.5rem; font-weight: 700; }
+    .metric small { color: var(--muted); display: block; font-size: .78rem; }
+    .narrative { font-size: 1rem; line-height: 1.75; color: var(--ink); border-left: 3px solid var(--blue); padding-left: 16px; margin-bottom: 16px; }
+    .vector { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .vector-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: .8rem; text-transform: uppercase; }
+    td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .sev-critical { color: var(--critical); font-weight: 600; }
+    .sev-high     { color: var(--high);     font-weight: 600; }
+    .sev-medium   { color: var(--medium);   font-weight: 600; }
+    .sev-low      { color: var(--low); }
+    .sev-info     { color: var(--info); }
+    code { font-family: "Cascadia Code", Consolas, monospace; background: var(--surface2); padding: 2px 6px; border-radius: 5px; font-size: .85em; }
+    details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+    .tag { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: .78rem; margin: 2px; }
+    .tag-port { color: var(--green); border-color: var(--green); }
+    .tag-path { color: var(--orange); border-color: var(--orange); }
+    .source-llm      { color: var(--purple); }
+    .source-heuristic { color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+
+  <!-- HERO -->
+  <div class="card">
+    <div class="hero">
+      <div>
+        <h1>Phantom Security Report</h1>
+        <div style="color:var(--muted)">{{ report.engagement_name }} &mdash; {{ report.generated_at[:10] }}</div>
+        <div class="hero-meta">
+          <span>Run <code>{{ report.run_id }}</code></span>
+          <span style="color:var(--muted)">{{ report.targets|length }} target(s)</span>
+          <span style="color:var(--muted)">{{ report.summary.count }} finding(s)</span>
+        </div>
+      </div>
+      {% set risk = report.analyst_reports[0].risk_level if report.analyst_reports else "info" %}
+      <div class="risk-box {{ risk }}">
+        <small>Overall Risk</small>
+        <div class="level">{{ risk|upper }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY METRICS -->
+  <div class="card">
+    <h2>Risk Metrics</h2>
+    <div class="grid3">
+      <div class="metric"><div class="val" style="color:var(--red)">{{ report.summary.highest_score }}</div><small>Highest CVSS-like score</small></div>
+      <div class="metric"><div class="val">{{ report.summary.average_score }}</div><small>Average score</small></div>
+      {% for sev, cnt in report.summary.severity_breakdown.items() %}
+      <div class="metric"><div class="val">{{ cnt }}</div><small>{{ sev|capitalize }}</small></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- AI ANALYSIS PER TARGET -->
+  {% for ar in report.analyst_reports %}
+  <div class="card">
+    <h2>AI Security Analysis &mdash; {{ ar.target }}
+      <span class="badge badge-{{ ar.risk_level }}" style="margin-left:8px">{{ ar.risk_level|upper }}</span>
+      <span style="font-size:.75rem;margin-left:8px" class="source-{{ ar.source }}">[{{ ar.source }}]</span>
+    </h2>
+    {% if ar.narrative %}
+    <p class="narrative">{{ ar.narrative }}</p>
+    {% endif %}
+    {% if ar.attack_vectors %}
+    <h3 style="font-size:.95rem;color:var(--muted);margin-bottom:10px">Attack Vectors</h3>
+    {% for v in ar.attack_vectors %}
+    <div class="vector">
+      <div class="vector-head">
+        <span class="badge badge-{{ v.severity }}">{{ v.severity|upper }}</span>
+        <strong>{{ v.title }}</strong>
+      </div>
+      <div style="color:var(--muted)">{{ v.description }}</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <!-- FINDINGS -->
+  <div class="card">
+    <h2>All Findings ({{ report.findings|length }})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Sev</th><th>Title</th><th>Target</th><th>Module</th><th>Recommendation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in report.findings|sort(attribute='score', reverse=True) %}
+        <tr>
+          <td class="sev-{{ f.severity }}">{{ f.severity }}</td>
+          <td>
+            <strong>{{ f.title }}</strong><br>
+            <span style="color:var(--muted);font-size:.85rem">{{ f.description }}</span><br>
+            <details><summary>Evidence</summary><code style="display:block;margin-top:4px;white-space:pre-wrap;word-break:break-all">{{ f.evidence }}</code></details>
+          </td>
+          <td><code>{{ f.target }}</code></td>
+          <td><code>{{ f.source_module }}</code></td>
+          <td style="color:var(--muted);font-size:.85rem">{{ f.recommendation }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ATTACK SURFACE -->
+  {% for ts in report.target_summaries %}
+  <div class="card">
+    <h2>Attack Surface &mdash; {{ ts.target }}</h2>
+    <div style="margin-bottom:10px">
+      {% for port in ts.open_ports %}<span class="tag tag-port">:{{ port }}</span>{% endfor %}
+      {% if ts.http_title %}<span class="tag">{{ ts.http_title }}</span>{% endif %}
+      {% if ts.http_status %}<span class="tag">HTTP {{ ts.http_status }}</span>{% endif %}
+    </div>
+    {% if ts.services %}
+    <div style="margin-bottom:10px">
+      {% for port, banner in ts.services.items() %}<div><code>:{{ port }}</code> <span style="color:var(--muted)">{{ banner[:120] }}</span></div>{% endfor %}
+    </div>
+    {% endif %}
+    {% if ts.exposed_paths %}
+    <div>Exposed paths:
+      {% for path, status in ts.exposed_paths.items() %}<span class="tag tag-path">{{ path }} ({{ status }})</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <!-- TIMELINE -->
+  <div class="card">
+    <h2>Execution Timeline</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Module</th><th>Action</th><th>Target</th><th>Status</th><th>Details</th></tr></thead>
+      <tbody>
+        {% for item in report.timeline %}
+        <tr>
+          <td style="color:var(--muted);white-space:nowrap;font-size:.8rem">{{ item.timestamp[11:19] }}</td>
+          <td><code>{{ item.module }}</code></td>
+          <td>{{ item.action }}</td>
+          <td style="color:var(--muted)">{{ item.target }}</td>
+          <td>{{ item.status }}</td>
+          <td><details><summary>details</summary><code style="white-space:pre-wrap;word-break:break-all;font-size:.8rem">{{ item.details }}</code></details></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</main>
+</body>
+</html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phantom Report</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: #fffdf8;
+      --ink: #1f2933;
+      --accent: #8f3b1b;
+      --muted: #66788a;
+      --border: #d9cbb8;
+    }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: radial-gradient(circle at top right, #f7e7d3, var(--bg));
+      color: var(--ink);
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    .hero, section {
+      background: color-mix(in srgb, var(--panel) 92%, white 8%);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 18px 40px rgba(31, 41, 51, 0.08);
+      margin-bottom: 18px;
+    }
+    h1, h2 {
+      margin-top: 0;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .metric {
+      padding: 14px;
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid var(--border);
+    }
+    .metric small {
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .sev-info { color: #215f8b; }
+    .sev-low { color: #84611d; }
+    .sev-medium { color: #9c3b14; }
+    .sev-high { color: #8a1c1c; }
+    code {
+      font-family: "Cascadia Code", Consolas, monospace;
+      background: #f8f4ed;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>Phantom Engagement Report</h1>
+      <p>{{ report.engagement_name }}</p>
+      <div class="meta">
+        <div class="metric"><small>Run ID</small>{{ report.run_id }}</div>
+        <div class="metric"><small>Generated</small>{{ report.generated_at }}</div>
+        <div class="metric"><small>Targets</small>{{ report.targets|length }}</div>
+        <div class="metric"><small>Findings</small>{{ report.summary.count }}</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Summary</h2>
+      <div class="meta">
+        <div class="metric"><small>Highest Score</small>{{ report.summary.highest_score }}</div>
+        <div class="metric"><small>Average Score</small>{{ report.summary.average_score }}</div>
+        <div class="metric"><small>Severity Breakdown</small>{{ report.summary.severity_breakdown }}</div>
+        <div class="metric"><small>Targets</small>{{ report.targets|join(', ') }}</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Target Analysis</h2>
+      {% for item in report.target_summaries %}
+      <div class="metric" style="margin-bottom: 12px;">
+        <small>Target</small>
+        <strong>{{ item.target }}</strong>
+        <p>{{ item.narrative }}</p>
+        <p><strong>Executed modules:</strong> {{ item.executed_modules|join(', ') }}</p>
+        <p><strong>Open ports:</strong> {{ item.open_ports }}</p>
+        {% if item.http %}
+        <p><strong>HTTP observation:</strong> <code>{{ item.http }}</code></p>
+        {% endif %}
+        <table>
+          <thead>
+            <tr>
+              <th>Module</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for step in item.decision_trace %}
+            <tr>
+              <td>{{ step.module }}</td>
+              <td>{{ step.priority }}</td>
+              <td>{{ step.status }}</td>
+              <td>{{ step.reason }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section>
+      <h2>Findings</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Title</th>
+            <th>Target</th>
+            <th>Module</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for finding in report.findings %}
+          <tr>
+            <td class="sev-{{ finding.severity }}">{{ finding.severity }}</td>
+            <td>
+              <strong>{{ finding.title }}</strong><br>
+              {{ finding.description }}<br>
+              <code>{{ finding.evidence }}</code>
+            </td>
+            <td>{{ finding.target }}</td>
+            <td>{{ finding.source_module }}</td>
+            <td>{{ finding.recommendation }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Timeline</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Module</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in report.timeline %}
+          <tr>
+            <td>{{ item.timestamp }}</td>
+            <td>{{ item.module }}</td>
+            <td>{{ item.action }}</td>
+            <td>{{ item.target }}</td>
+            <td>{{ item.status }}</td>
+            <td><code>{{ item.details }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

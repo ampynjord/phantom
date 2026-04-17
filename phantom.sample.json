@@ -1,0 +1,8 @@
+{
+  "engagement_name": "local-smoke",
+  "targets": ["127.0.0.1"],
+  "scope": {
+    "domain_allowlist": [],
+    "ip_allowlist": ["127.0.0.0/8"]
+  }
+}

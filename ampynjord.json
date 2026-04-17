@@ -1,0 +1,8 @@
+{
+  "engagement_name": "ampynjord-bzh",
+  "targets": ["https://ampynjord.bzh"],
+  "scope": {
+    "domain_allowlist": ["ampynjord.bzh"],
+    "ip_allowlist": []
+  }
+}
